@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/grafana/pkg/api/cloudwatch"
+  "github.com/grafana/grafana/pkg/api/sqldb"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/log"
 	"github.com/grafana/grafana/pkg/metrics"
@@ -86,27 +87,32 @@ func ProxyDataSourceRequest(c *middleware.Context) {
 		return
 	}
 
-	if ds.Type == m.DS_CLOUDWATCH {
-		cloudwatch.HandleRequest(c, ds)
-		return
-	}
-
 	if ds.Type == m.DS_INFLUXDB {
 		if c.Query("db") != ds.Database {
 			c.JsonApiErr(403, "Datasource is not configured to allow this database", nil)
 			return
 		}
 	}
-
-	targetUrl, _ := url.Parse(ds.Url)
-	if len(setting.DataProxyWhiteList) > 0 {
-		if _, exists := setting.DataProxyWhiteList[targetUrl.Host]; !exists {
-			c.JsonApiErr(403, "Data proxy hostname and ip are not included in whitelist", nil)
+switch ds.Type {
+ case m.DS_CLOUDWATCH:
+ cloudwatch.HandleRequest(c, ds)
+ 
+ 	case m.DS_SQLDB:
+ 		host, _ := ds.JsonData.Get("host").String()
+ 		if !checkWhiteList(c, host) {
+ 			return
+ 		}
+ 
+ 		sqldb.HandleRequest(c, ds)
+ 
+ 	default:
+ 		targetUrl, _ := url.Parse(ds.Url)
+ 		if !checkWhiteList(c, targetUrl.Host) {
+	
 			return
 		}
-	}
-
-	proxyPath := c.Params("*")
+	
+proxyPath := c.Params("*")
 
 	if ds.Type == m.DS_PROMETHEUS {
 		if c.Req.Request.Method != http.MethodGet || !strings.HasPrefix(proxyPath, "api/") {
@@ -142,6 +148,17 @@ func ProxyDataSourceRequest(c *middleware.Context) {
 	c.Resp.Header().Del("Set-Cookie")
 }
 
+ func checkWhiteList(c *middleware.Context, host string) bool {
+ 	if host != "" && len(setting.DataProxyWhiteList) > 0 {
+ 		if _, exists := setting.DataProxyWhiteList[host]; !exists {
+ 			c.JsonApiErr(403, "Data proxy hostname and ip are not included in whitelist", nil)
+ 			return false
+ 		}
+ 	}
+ 
+ 	return true
+ }
+  
 func logProxyRequest(dataSourceType string, c *middleware.Context) {
 	if !setting.DataProxyLogging {
 		return
