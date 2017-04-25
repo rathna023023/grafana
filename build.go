@@ -370,6 +370,7 @@ func build(binaryName, pkg string, tags []string) {
 		args = append(args, "-race")
 	}
 
+  args = append(args, "-gcflags", gcflags())
 	args = append(args, "-o", binary)
 	args = append(args, pkg)
 	setBuildEnv()
@@ -385,9 +386,17 @@ func build(binaryName, pkg string, tags []string) {
 	}
 }
 
+func gcflags() string {
+	var b bytes.Buffer
+	b.WriteString("-N")
+	b.WriteString(" ")
+	b.WriteString("-l")
+	return b.String()
+}
+
 func ldflags() string {
 	var b bytes.Buffer
-	b.WriteString("-w")
+	//b.WriteString("-w")  // Using -w prevents using dlv
 	b.WriteString(fmt.Sprintf(" -X main.version=%s", version))
 	b.WriteString(fmt.Sprintf(" -X main.commit=%s", getGitSha()))
 	b.WriteString(fmt.Sprintf(" -X main.buildstamp=%d", buildStamp()))
